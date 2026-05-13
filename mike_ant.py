@@ -1,49 +1,52 @@
 """
 귀여운 캐터필러 데스크탑 펫
 - 실행 시 텍스트 파일 선택 → 줄별 단어를 몸통에 표시
-- 중국어+숫자+한국어 혼합 행 → 중국어 우선 재배치
-- 단클릭 / 15초 경과 : 다음 단어
+- 단클릭 / 길이별 자동 : 다음 단어
 - 더블클릭 : 파일 재선택
 - 우클릭   : 종료
 """
 import tkinter as tk
 from tkinter import filedialog
-import math
-import random
+import math, random
 from collections import deque
 
 TRANS  = '#FF00FF'
-AUTO_S = 15
 DBL_MS = 280
 
-# ── 캐터필러 치수 ─────────────────────────────────────────────────────────────
-SEG_RX       = 27    # 마디 반너비 (앞뒤)
-SEG_RY       = 25    # 마디 반높이 (좌우) — 거의 원형
-HEAD_RX      = 34
-HEAD_RY      = 32
-SEG_SPACE_PX = 43    # 마디 간 거리 (살짝 겹쳐 구슬 엮인 느낌)
-LEG_LEN      = 13
-SPEED        = 1.5   # 살살 기어다님
+def auto_secs(word):
+    n = len(word)
+    if n < 10: return 15
+    if n < 20: return 20
+    if n < 30: return 25
+    return 30
 
-# ── 색상 팔레트 ───────────────────────────────────────────────────────────────
-C_SEG_A  = '#52B788'   # 마디 A (민트그린)
-C_SEG_B  = '#40916C'   # 마디 B (짙은 민트)
-C_SEG_HL = '#B7E4C7'   # 마디 하이라이트
-C_SEG_SH = '#2D6A4F'   # 마디 윤곽/그림자
-C_HEAD   = '#74C69D'   # 머리
-C_HEAD_HL= '#D8F3DC'   # 머리 하이라이트
-C_HEAD_OL= '#2D6A4F'   # 머리 윤곽
-C_LEG    = '#2D6A4F'   # 다리
-C_EYE_W  = '#FFFFFF'   # 눈 흰자
-C_EYE_P  = '#1B1B2F'   # 동공
-C_EYE_SH = '#FFFFFF'   # 눈 반짝이
-C_BLUSH  = '#FFB3C6'   # 볼터치 (분홍)
-C_SMILE  = '#2D6A4F'   # 미소
-C_ANT    = '#2D6A4F'   # 더듬이
-C_ANT_TIP= '#FFD166'   # 더듬이 끝 (노랑)
-C_LETTER = '#FFFFFF'   # 글자
-C_LTR_SH = '#1B4332'   # 글자 그림자
+# ── 치수 ─────────────────────────────────────────────────────────────────────
+SEG_R        = 33    # 마디 반지름 (완전한 원)
+HEAD_R       = 46    # 머리 반지름
+SEG_SPACE_PX = 54    # 마디 간 거리
+LEG_LEN      = 16
+SPEED        = 1.5
+MARGIN       = 220   # 머리 이동 경계 — 첫 글자 잘림 방지
 
+# ── 색상 ─────────────────────────────────────────────────────────────────────
+C_BODY_A  = '#74C830'   # 밝은 라임 그린 A
+C_BODY_B  = '#5AB020'   # 라임 그린 B
+C_BODY_HL = '#B8EC70'   # 하이라이트
+C_BODY_SH = '#347010'   # 그림자 / 윤곽
+C_HEAD    = '#84D840'   # 머리 색
+C_HEAD_HL = '#C4F080'   # 머리 하이라이트
+C_EYE_W   = '#FFFFFF'
+C_EYE_P   = '#181830'   # 동공
+C_EYE_HL1 = '#FFFFFF'   # 반짝이
+C_BLUSH   = '#FF9090'   # 볼터치
+C_LEG     = '#347010'
+C_ANT     = '#347010'
+C_ANT_TIP = '#FFD840'
+C_LETTER  = '#204808'   # 글자 (진녹)
+C_LTR_HL  = '#FFFFFF'   # 글자 하이라이트
+C_MOUTH_L = '#204808'   # 입 윤곽
+C_MOUTH_I = '#FF7070'   # 입 안 (혀/잇몸)
+C_TEETH   = '#FFFFFF'   # 이
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 언어 판별 & 재배치
@@ -51,15 +54,12 @@ C_LTR_SH = '#1B4332'   # 글자 그림자
 
 def is_chinese(ch):
     cp = ord(ch)
-    return (0x4E00 <= cp <= 0x9FFF or
-            0x3400 <= cp <= 0x4DBF or
-            0xF900 <= cp <= 0xFAFF or
-            0x20000 <= cp <= 0x2A6DF)
+    return (0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF or
+            0xF900 <= cp <= 0xFAFF or 0x20000 <= cp <= 0x2A6DF)
 
 def is_korean(ch):
     cp = ord(ch)
-    return (0xAC00 <= cp <= 0xD7AF or
-            0x1100 <= cp <= 0x11FF or
+    return (0xAC00 <= cp <= 0xD7AF or 0x1100 <= cp <= 0x11FF or
             0x3130 <= cp <= 0x318F)
 
 def reorder_line(line):
@@ -71,11 +71,6 @@ def reorder_line(line):
     if chinese and korean:
         return ''.join(chinese + digits + korean + others)
     return line
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 파일 선택 & 파싱
-# ══════════════════════════════════════════════════════════════════════════════
 
 def load_words(path):
     for enc in ('utf-8', 'utf-8-sig', 'cp949'):
@@ -91,17 +86,13 @@ def load_words(path):
 
 def pick_file(parent=None):
     return filedialog.askopenfilename(
-        parent=parent,
-        title="단어 파일을 선택하세요",
+        parent=parent, title="단어 파일을 선택하세요",
         filetypes=[("텍스트 파일", "*.txt"), ("모든 파일", "*.*")]
     ) or None
 
 def pick_and_load():
-    tmp = tk.Tk()
-    tmp.withdraw()
-    tmp.attributes('-topmost', True)
-    path = pick_file(parent=tmp)
-    tmp.destroy()
+    tmp = tk.Tk(); tmp.withdraw(); tmp.attributes('-topmost', True)
+    path = pick_file(parent=tmp); tmp.destroy()
     return load_words(path) if path else []
 
 
@@ -132,12 +123,12 @@ class Caterpillar:
                             bg=TRANS, highlightthickness=0)
         self.cv.pack()
 
-        self.hx = self.W / 2.0
-        self.hy = self.H / 2.0
-        self.heading  = random.uniform(0, 360)
-        self.steer    = 0.0
-        self.steer_cd = 0
-        self.tick     = 0
+        self.hx      = self.W / 2.0
+        self.hy      = self.H / 2.0
+        self.heading = random.uniform(0, 360)
+        self.steer   = 0.0
+        self.steer_cd= 0
+        self.tick    = 0
 
         self._rebuild_seg_idx()
         self._init_hist()
@@ -169,21 +160,25 @@ class Caterpillar:
         self.hist = deque(maxlen=max_hist)
         a0 = math.radians(self.heading)
         for k in range(max_hist):
-            self.hist.append((self.hx - k * math.cos(a0) * SPEED,
-                              self.hy - k * math.sin(a0) * SPEED))
+            # 뒤쪽 위치를 화면 안으로 클램프 — 시작 시 글자 잘림 방지
+            px = self.hx - k * math.cos(a0) * SPEED
+            py = self.hy - k * math.sin(a0) * SPEED
+            px = max(SEG_R + 10, min(self.W - SEG_R - 10, px))
+            py = max(SEG_R + 10, min(self.H - SEG_R - 10, py))
+            self.hist.append((px, py))
 
     # ── 자동 전환 ────────────────────────────────────────────────────────────
 
     def _reset_auto(self):
         if self._auto_job:
             self.root.after_cancel(self._auto_job)
-        self._auto_job = self.root.after(AUTO_S * 1000, self._next_word)
-
-    # ── 레이블 ───────────────────────────────────────────────────────────────
+        secs = auto_secs(self.word)
+        self._auto_job = self.root.after(secs * 1000, self._next_word)
 
     def _lbl(self):
+        secs = auto_secs(self.word)
         return (f"  {self.word_idx+1}/{len(self.words)}  "
-                f"단클릭·{AUTO_S}초:다음  더블클릭:파일재선택  우클릭:종료  ")
+                f"단클릭·{secs}초:다음  더블클릭:파일재선택  우클릭:종료  ")
 
     # ── 클릭 ─────────────────────────────────────────────────────────────────
 
@@ -196,10 +191,10 @@ class Caterpillar:
             self._clk_job = self.root.after(DBL_MS, self._next_word)
 
     def _next_word(self):
-        self._clk_job  = None
-        self.word_idx  = (self.word_idx + 1) % len(self.words)
-        self.word      = self.words[self.word_idx]
-        self.n         = max(8, len(self.word))
+        self._clk_job = None
+        self.word_idx = (self.word_idx + 1) % len(self.words)
+        self.word     = self.words[self.word_idx]
+        self.n        = max(8, len(self.word))
         self._label.config(text=self._lbl())
         self._reset_auto()
 
@@ -227,22 +222,116 @@ class Caterpillar:
 
     # ── 좌표 헬퍼 ────────────────────────────────────────────────────────────
 
-    def _at(self, cx, cy, a_rad, dx, dy):
-        ca, sa = math.cos(a_rad), math.sin(a_rad)
+    def _at(self, cx, cy, a, dx, dy):
+        ca, sa = math.cos(a), math.sin(a)
         return cx + dx*ca - dy*sa, cy + dx*sa + dy*ca
 
-    def _oval_pts(self, cx, cy, a_rad, rx, ry, n=24):
-        pts = []
-        for k in range(n):
-            θ = 2*math.pi*k/n
-            pts.extend(self._at(cx, cy, a_rad, rx*math.cos(θ), ry*math.sin(θ)))
-        return pts
-
-    def _circle(self, cx, cy, r, fill, outline='', width=0):
+    def _circle(self, x, y, r, fill, outline='', width=0):
         self.ids.append(self.cv.create_oval(
-            cx-r, cy-r, cx+r, cy+r, fill=fill, outline=outline, width=width))
+            x-r, y-r, x+r, y+r, fill=fill, outline=outline, width=width))
 
-    # ── 그리기 ───────────────────────────────────────────────────────────────
+    # ── 마디 그리기 ───────────────────────────────────────────────────────────
+
+    def _draw_segment(self, x, y, r, color, hl, sh, char=''):
+        cv = self.cv
+
+        # 그림자
+        self._circle(x+3, y+4, r, sh)
+
+        # 본체
+        self.ids.append(cv.create_oval(
+            x-r, y-r, x+r, y+r,
+            fill=color, outline=sh, width=1))
+
+        # 하이라이트 (왼쪽 위 빛 반사)
+        hx2 = x - r * 0.28
+        hy2 = y - r * 0.28
+        hr  = r * 0.44
+        self._circle(hx2, hy2, hr, hl)
+
+        # 글자 (있을 때만)
+        if char:
+            fs = max(14, int(r * 1.05))
+            # 글자 그림자
+            self.ids.append(cv.create_text(
+                x+1.5, y+1.5, text=char,
+                font=('맑은 고딕', fs, 'bold'), fill=C_BODY_SH))
+            # 글자 본체
+            self.ids.append(cv.create_text(
+                x, y, text=char,
+                font=('맑은 고딕', fs, 'bold'), fill=C_LETTER))
+
+    # ── 머리 그리기 ───────────────────────────────────────────────────────────
+
+    def _draw_head(self, hx, hy, ha):
+        cv = self.cv
+        r  = HEAD_R
+
+        # 그림자
+        self._circle(hx+3, hy+4, r, C_BODY_SH)
+
+        # 머리 본체
+        self._circle(hx, hy, r, C_HEAD, C_BODY_SH, 1)
+
+        # 머리 하이라이트
+        self._circle(hx - r*0.27, hy - r*0.27, r*0.42, C_HEAD_HL)
+
+        # ── 더듬이 ────────────────────────────────────────────────────────
+        sway = math.sin(self.tick * 0.09) * 0.5
+        for side in (-1, 1):
+            base = self._at(hx, hy, ha, r*0.45, side*r*0.48)
+            mid  = self._at(hx, hy, ha,
+                            r*0.72 + sway*side*r*0.18,
+                            side*(r*0.90 + sway*r*0.12))
+            tip  = self._at(hx, hy, ha,
+                            r*0.52,
+                            side*(r*1.55 + sway*r*0.30))
+            self.ids.append(cv.create_line(
+                *base, *mid, *tip,
+                fill=C_ANT, width=2.5, smooth=True, capstyle='round'))
+            self._circle(tip[0], tip[1], 6, C_ANT_TIP, C_BODY_SH, 1)
+
+        # ── 눈 (크고 동그랗게) ────────────────────────────────────────────
+        eye_r = r * 0.40
+        for side in (-1, 1):
+            ex, ey = self._at(hx, hy, ha, r*0.20, side*r*0.50)
+
+            # 흰자
+            self._circle(ex, ey, eye_r, C_EYE_W, C_BODY_SH, 1)
+
+            # 동공 (약간 앞쪽으로)
+            px2, py2 = self._at(ex, ey, ha, eye_r*0.15, 0)
+            self._circle(px2, py2, eye_r*0.58, C_EYE_P)
+
+            # 반짝이 큰 것
+            self._circle(ex - eye_r*0.22, ey - eye_r*0.22, eye_r*0.26, C_EYE_HL1)
+            # 반짝이 작은 것
+            self._circle(ex + eye_r*0.18, ey - eye_r*0.28, eye_r*0.13, C_EYE_HL1)
+
+        # ── 볼터치 (분홍 타원) ────────────────────────────────────────────
+        for side in (-1, 1):
+            bx, by = self._at(hx, hy, ha, r*0.08, side*r*0.78)
+            br = r * 0.24
+            self.ids.append(cv.create_oval(
+                bx-br, by-br*0.6, bx+br, by+br*0.6,
+                fill=C_BLUSH, outline=''))
+
+        # ── 열린 입 ───────────────────────────────────────────────────────
+        mx, my = self._at(hx, hy, ha, r*0.55, 0)
+        mw, mh2 = r*0.34, r*0.22
+
+        # 입 내부 (혀/잇몸 색)
+        self.ids.append(cv.create_oval(
+            mx-mw, my-mh2, mx+mw, my+mh2,
+            fill=C_MOUTH_I, outline=C_MOUTH_L, width=1.5))
+
+        # 윗니 (흰 작은 반원 2개)
+        for side in (-1, 1):
+            tx2 = mx + side * mw * 0.38
+            ty2 = my - mh2 * 0.3
+            self._circle(tx2, ty2, mw*0.28, C_TEETH)
+
+    # ── 전체 그리기 ───────────────────────────────────────────────────────────
 
     def _draw(self):
         cv = self.cv
@@ -253,141 +342,41 @@ class Caterpillar:
         hist  = list(self.hist)
         total = len(hist)
         n     = self.n
+        ha    = math.radians(self.heading)
 
-        # ── ① 다리 (몸체 아래) ──────────────────────────────────────────────
+        # ① 다리 (몸체 뒤에 먼저 그림)
         for i in range(n - 1, -1, -1):
             hi = self._all_seg_idx[i]
             if hi >= total:
                 continue
             x, y   = hist[hi]
-            px, py = hist[max(0, hi-1)]
-            a_rad  = math.atan2(py-y, px-x)
+            px, py = hist[max(0, hi - 1)]
+            a_rad  = math.atan2(py - y, px - x)
             phase  = math.sin(self.tick * 0.13 - i * 0.65)
 
             for side in (-1, 1):
-                # 다리 부착점
-                bx, by = self._at(x, y, a_rad, SEG_RX*0.1, side*SEG_RY*0.88)
-                # 무릎 (살짝 앞뒤로 흔들림)
-                kx, ky = self._at(x, y, a_rad, phase*5, side*(SEG_RY + LEG_LEN*0.6))
-                # 발끝 (둥근 발)
-                tx, ty = self._at(x, y, a_rad, phase*7, side*(SEG_RY + LEG_LEN))
-
+                bx, by = self._at(x, y, a_rad, SEG_R*0.1, side*SEG_R*0.90)
+                kx, ky = self._at(x, y, a_rad, phase*4,   side*(SEG_R + LEG_LEN*0.55))
+                tx2,ty2= self._at(x, y, a_rad, phase*6,   side*(SEG_R + LEG_LEN))
                 self.ids.append(cv.create_line(
-                    bx, by, kx, ky, tx, ty,
-                    fill=C_LEG, width=4, capstyle='round', smooth=True))
-                # 귀여운 둥근 발끝
-                self._circle(tx, ty, 5, C_LEG)
+                    bx, by, kx, ky, tx2, ty2,
+                    fill=C_LEG, width=3.5, capstyle='round', smooth=True))
+                self._circle(tx2, ty2, 5, C_LEG)
 
-        # ── ② 몸통 마디 (꼬리→머리 순) ──────────────────────────────────────
+        # ② 몸통 마디 (꼬리→머리 순)
         for i in range(n - 1, -1, -1):
             hi = self._all_seg_idx[i]
             if hi >= total:
                 continue
-            x, y   = hist[hi]
-            px, py = hist[max(0, hi-1)]
-            a_rad  = math.atan2(py-y, px-x)
+            x, y = hist[hi]
 
-            fill = C_SEG_A if i % 2 == 0 else C_SEG_B
+            color = C_BODY_A if i % 2 == 0 else C_BODY_B
+            char  = self.word[i] if i < len(self.word) else ''
+            self._draw_segment(x, y, SEG_R, color, C_BODY_HL, C_BODY_SH, char)
 
-            # 마디 그림자 (살짝 아래 어두운 원)
-            sp = self._oval_pts(x+2, y+2, a_rad, SEG_RX, SEG_RY)
-            self.ids.append(cv.create_polygon(*sp, fill=C_SEG_SH,
-                                              outline='', smooth=True))
-            # 마디 본체
-            pts = self._oval_pts(x, y, a_rad, SEG_RX, SEG_RY)
-            self.ids.append(cv.create_polygon(*pts, fill=fill,
-                                              outline=C_SEG_SH, width=1, smooth=True))
-            # 하이라이트 (왼쪽 위 느낌)
-            hlx = x - math.sin(a_rad) * SEG_RY * 0.28
-            hly = y + math.cos(a_rad) * SEG_RY * 0.28
-            hl = self._oval_pts(hlx, hly, a_rad, SEG_RX*0.50, SEG_RY*0.42)
-            self.ids.append(cv.create_polygon(*hl, fill=C_SEG_HL,
-                                              outline='', smooth=True))
-
-            # 글자 그림자 + 글자
-            char = self.word[i] if i < len(self.word) else ''
-            if char:
-                self.ids.append(cv.create_text(
-                    x+1, y+1, text=char,
-                    font=('맑은 고딕', 16, 'bold'), fill=C_LTR_SH))
-                self.ids.append(cv.create_text(
-                    x, y, text=char,
-                    font=('맑은 고딕', 16, 'bold'), fill=C_LETTER))
-
-        # ── ③ 머리 ───────────────────────────────────────────────────────────
-        hx, hy = hist[0] if hist else (self.hx, self.hy)
-        ha     = math.radians(self.heading)
-
-        # 머리 그림자
-        sp = self._oval_pts(hx+2, hy+2, ha, HEAD_RX, HEAD_RY)
-        self.ids.append(cv.create_polygon(*sp, fill=C_SEG_SH,
-                                          outline='', smooth=True))
-        # 머리 본체
-        pts = self._oval_pts(hx, hy, ha, HEAD_RX, HEAD_RY)
-        self.ids.append(cv.create_polygon(*pts, fill=C_HEAD,
-                                          outline=C_HEAD_OL, width=1, smooth=True))
-        # 머리 하이라이트
-        hlx = hx - math.sin(ha) * HEAD_RY * 0.28
-        hly = hy + math.cos(ha) * HEAD_RY * 0.28
-        hl  = self._oval_pts(hlx, hly, ha, HEAD_RX*0.50, HEAD_RY*0.42)
-        self.ids.append(cv.create_polygon(*hl, fill=C_HEAD_HL,
-                                          outline='', smooth=True))
-
-        # ── 눈 (크고 동그랗고 귀엽게) ────────────────────────────────────────
-        eye_r = HEAD_RY * 0.44
-        for side in (-1, 1):
-            ex, ey = self._at(hx, hy, ha, HEAD_RX*0.18, side*HEAD_RY*0.52)
-
-            # 흰자
-            self._circle(ex, ey, eye_r, C_EYE_W, C_SEG_SH, 1)
-            # 동공
-            self._circle(ex + eye_r*0.12, ey + eye_r*0.10,
-                         eye_r*0.55, C_EYE_P)
-            # 반짝이 큰 것
-            self._circle(ex - eye_r*0.18, ey - eye_r*0.20,
-                         eye_r*0.24, C_EYE_SH)
-            # 반짝이 작은 것
-            self._circle(ex + eye_r*0.20, ey - eye_r*0.28,
-                         eye_r*0.12, C_EYE_SH)
-
-        # ── 볼터치 ───────────────────────────────────────────────────────────
-        for side in (-1, 1):
-            bx, by = self._at(hx, hy, ha, HEAD_RX*0.08, side*HEAD_RY*0.76)
-            br = HEAD_RY * 0.21
-            self.ids.append(self.cv.create_oval(
-                bx-br, by-br*0.65, bx+br, by+br*0.65,
-                fill=C_BLUSH, outline='', stipple='gray50'))
-
-        # ── 미소 ─────────────────────────────────────────────────────────────
-        # 반원 호 (앞면에 작은 U자)
-        smile_pts = []
-        for k in range(9):
-            t = k / 8
-            ang = math.pi + t * math.pi   # 아래 반원
-            sdx = HEAD_RX * 0.36 * math.cos(ang)
-            sdy = HEAD_RY * 0.22 * math.sin(ang) + HEAD_RY * 0.38
-            px2, py2 = self._at(hx, hy, ha, sdx, sdy)
-            smile_pts.extend([px2, py2])
-        if len(smile_pts) >= 4:
-            self.ids.append(cv.create_line(
-                *smile_pts, fill=C_SMILE, width=2,
-                smooth=True, capstyle='round'))
-
-        # ── 더듬이 ───────────────────────────────────────────────────────────
-        sway = math.sin(self.tick * 0.09) * 0.45
-        for side in (-1, 1):
-            base = self._at(hx, hy, ha, HEAD_RX*0.55, side*HEAD_RY*0.45)
-            mid  = self._at(hx, hy, ha,
-                            HEAD_RX*0.80 + sway*side*HEAD_RY*0.20,
-                            side*(HEAD_RY*0.95 + sway*HEAD_RY*0.15))
-            tip  = self._at(hx, hy, ha,
-                            HEAD_RX*0.60,
-                            side*(HEAD_RY*1.52 + sway*HEAD_RY*0.35))
-            self.ids.append(cv.create_line(
-                *base, *mid, *tip,
-                fill=C_ANT, width=2, smooth=True, capstyle='round'))
-            # 더듬이 끝 노란 공
-            self._circle(tip[0], tip[1], 5, C_ANT_TIP, C_SEG_SH, 1)
+        # ③ 머리
+        hx2, hy2 = hist[0] if hist else (self.hx, self.hy)
+        self._draw_head(hx2, hy2, ha)
 
     # ── 이동 AI ──────────────────────────────────────────────────────────────
 
@@ -395,7 +384,7 @@ class Caterpillar:
         self.tick += 1
 
         if self.steer_cd <= 0:
-            self.steer_cd = random.randint(60, 210)
+            self.steer_cd = random.randint(60, 200)
             self.steer    = random.uniform(-1.8, 1.8)
         self.steer_cd -= 1
         self.heading = (self.heading + self.steer) % 360
@@ -404,15 +393,15 @@ class Caterpillar:
         self.hx += SPEED * math.cos(a)
         self.hy += SPEED * math.sin(a)
 
-        m = 150
+        m = MARGIN
         if self.hx < m:
-            self.heading = random.uniform(-70, 70);  self.hx = m;          self.steer_cd = 40
+            self.heading = random.uniform(-60, 60);   self.hx = m;          self.steer_cd = 40
         elif self.hx > self.W - m:
-            self.heading = random.uniform(110, 250); self.hx = self.W - m; self.steer_cd = 40
+            self.heading = random.uniform(120, 240);  self.hx = self.W - m; self.steer_cd = 40
         if self.hy < m:
-            self.heading = random.uniform(15, 165);  self.hy = m;          self.steer_cd = 40
+            self.heading = random.uniform(20, 160);   self.hy = m;          self.steer_cd = 40
         elif self.hy > self.H - m:
-            self.heading = random.uniform(195, 345); self.hy = self.H - m; self.steer_cd = 40
+            self.heading = random.uniform(200, 340);  self.hy = self.H - m; self.steer_cd = 40
 
         self.hist.appendleft((self.hx, self.hy))
 
