@@ -219,12 +219,13 @@ class WordPhysics:
             if self.gx - self.left_w < MARGIN:
                 self.gx  = MARGIN + self.left_w
                 self.gvx = abs(self.gvx) * BOUNCE_WALL
-            # 오른쪽 벽: 단어가 화면에 맞을 때만 반사
-            # 너무 길면 오른쪽에서 중복 허용 (오른쪽 벽 반사 없음)
-            if self.word_fits:
-                if self.gx + self.right_w > self.W - MARGIN:
-                    self.gx  = self.W - MARGIN - self.right_w
-                    self.gvx = -abs(self.gvx) * BOUNCE_WALL
+            # 오른쪽 벽: 항상 경계 적용 — 단어 길이에 따라 반사 여부만 다름
+            if self.gx + self.right_w > self.W - MARGIN:
+                self.gx = self.W - MARGIN - self.right_w
+                if self.word_fits:
+                    self.gvx = -abs(self.gvx) * BOUNCE_WALL  # 짧은 단어: 반사
+                else:
+                    self.gvx = 0.0                            # 긴 단어: 멈춤 (겹침 없음)
 
             # 각 글자: 위상 다른 진동으로 개성 있게 흔들림
             for i, b in enumerate(self.bubbles):
@@ -236,8 +237,8 @@ class WordPhysics:
                 b.step_track()
                 # 왼쪽: 절대 잘리지 않음
                 b.x = max(MARGIN + self.radius, b.x)
-                # 오른쪽: 화면 밖으로 완전히 사라지지만 않게 (중복은 허용)
-                b.x = min(self.W - self.radius, b.x)
+                # 오른쪽: MARGIN 경계 안으로 클램프 (겹침 없음)
+                b.x = min(self.W - MARGIN - self.radius, b.x)
                 b.y = max(MARGIN + self.radius, min(self.H - MARGIN - self.radius, b.y))
 
         elif self.state == S_SCATTER:
