@@ -45,22 +45,6 @@ PALETTE = [
 # 언어 헬퍼
 # ══════════════════════════════════════════════════════════════════════════════
 
-def is_chinese(ch):
-    cp = ord(ch)
-    return 0x4E00<=cp<=0x9FFF or 0x3400<=cp<=0x4DBF or 0xF900<=cp<=0xFAFF
-
-def is_korean(ch):
-    cp = ord(ch)
-    return 0xAC00<=cp<=0xD7AF or 0x1100<=cp<=0x11FF or 0x3130<=cp<=0x318F
-
-def reorder_line(line):
-    chinese = [c for c in line if is_chinese(c)]
-    digits  = [c for c in line if c.isdigit()]
-    korean  = [c for c in line if is_korean(c)]
-    others  = [c for c in line if not is_chinese(c) and not c.isdigit()
-                                  and not is_korean(c) and c.strip()]
-    return ''.join(chinese+digits+korean+others) if chinese and korean else line
-
 def load_words(path):
     for enc in ('utf-8','utf-8-sig','cp949'):
         try:
@@ -71,7 +55,7 @@ def load_words(path):
             continue
     else:
         return []
-    return [reorder_line(l.strip()) for l in lines if l.strip()]
+    return [l.strip() for l in lines if l.strip()]
 
 def pick_file(parent=None):
     return filedialog.askopenfilename(
