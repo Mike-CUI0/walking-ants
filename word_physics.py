@@ -168,14 +168,21 @@ class WordPhysics:
             b.ty = self.gy
             self.bubbles.append(b)
 
-        # 벽 반사 계산용: 진동(osc_amp*0.35 최대 ~7px) + 여유 10px 포함
+        # 벽 계산: 진동 폭(osc_amp*0.35 최대 ≈7px) + 여유
         osc_margin   = int(18 * 0.35) + 10
         self.left_w  = abs(self.offsets[0])  + self.radius + osc_margin
         self.right_w = abs(self.offsets[-1]) + self.radius + osc_margin
 
-        # 시작 gx 도 안전 범위로 클램프
-        self.gx = max(MARGIN + self.left_w,
-                      min(W - MARGIN - self.right_w, self.gx))
+        # 단어가 화면 안에 들어오는지 여부
+        self.word_fits = (self.left_w + self.right_w) <= (W - 2 * MARGIN)
+
+        # 시작 gx: 왼쪽 기준으로 클램프 (왼쪽 우선)
+        if self.word_fits:
+            self.gx = max(MARGIN + self.left_w,
+                          min(W - MARGIN - self.right_w, W / 2))
+        else:
+            # 단어가 너무 길면 왼쪽 정렬 시작 (오른쪽 중복 허용)
+            self.gx = MARGIN + self.left_w
 
     # ── 상태 업데이트 → True 반환 시 다음 단어로 전환 ──────────────────────────
     def update(self) -> bool:
@@ -208,14 +215,16 @@ class WordPhysics:
             if self.gy - r < MARGIN:
                 self.gy  = MARGIN + r
                 self.gvy = abs(self.gvy) * BOUNCE_FLOOR
-            # 왼쪽 벽 — 첫 글자(맨 왼쪽)가 항상 화면 안에 보이도록
+            # 왼쪽 벽: 항상 강제 — 첫 글자 절대 잘리지 않음
             if self.gx - self.left_w < MARGIN:
                 self.gx  = MARGIN + self.left_w
                 self.gvx = abs(self.gvx) * BOUNCE_WALL
-            # 오른쪽 벽 — 마지막 글자 기준
-            if self.gx + self.right_w > self.W - MARGIN:
-                self.gx  = self.W - MARGIN - self.right_w
-                self.gvx = -abs(self.gvx) * BOUNCE_WALL
+            # 오른쪽 벽: 단어가 화면에 맞을 때만 반사
+            # 너무 길면 오른쪽에서 중복 허용 (오른쪽 벽 반사 없음)
+            if self.word_fits:
+                if self.gx + self.right_w > self.W - MARGIN:
+                    self.gx  = self.W - MARGIN - self.right_w
+                    self.gvx = -abs(self.gvx) * BOUNCE_WALL
 
             # 각 글자: 위상 다른 진동으로 개성 있게 흔들림
             for i, b in enumerate(self.bubbles):
@@ -225,8 +234,10 @@ class WordPhysics:
                 b.tx = self.gx + self.offsets[i] + ox
                 b.ty = self.gy + oy
                 b.step_track()
-                # 실제 위치 클램프 — 어떤 글자도 화면 밖으로 나가지 않음
-                b.x = max(MARGIN + self.radius, min(self.W - MARGIN - self.radius, b.x))
+                # 왼쪽: 절대 잘리지 않음
+                b.x = max(MARGIN + self.radius, b.x)
+                # 오른쪽: 화면 밖으로 완전히 사라지지만 않게 (중복은 허용)
+                b.x = min(self.W - self.radius, b.x)
                 b.y = max(MARGIN + self.radius, min(self.H - MARGIN - self.radius, b.y))
 
         elif self.state == S_SCATTER:
