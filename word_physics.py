@@ -219,11 +219,10 @@ class WordPhysics:
             if self.gx - self.left_w < MARGIN:
                 self.gx  = MARGIN + self.left_w
                 self.gvx = abs(self.gvx) * BOUNCE_WALL
-            # 오른쪽 벽: 단어가 맞을 때만 반사, 길면 오른쪽 벽 없음
-            if self.word_fits:
-                if self.gx + self.right_w > self.W - MARGIN:
-                    self.gx  = self.W - MARGIN - self.right_w
-                    self.gvx = -abs(self.gvx) * BOUNCE_WALL
+            # 오른쪽 벽: 항상 반사
+            if self.gx + self.right_w > self.W - MARGIN:
+                self.gx  = self.W - MARGIN - self.right_w
+                self.gvx = -abs(self.gvx) * BOUNCE_WALL
 
             # 각 글자: 위상 다른 진동으로 개성 있게 흔들림
             for i, b in enumerate(self.bubbles):
