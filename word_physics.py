@@ -9,9 +9,15 @@ from tkinter import filedialog
 import math, random
 
 TRANS  = '#FF00FF'
-AUTO_S = 15
 DBL_MS = 300
 FPS    = 60
+
+def auto_secs(word):
+    n = len(word)
+    if n < 10: return 15
+    if n < 20: return 20
+    if n < 30: return 25
+    return 30
 
 # ── 물리 상수 ─────────────────────────────────────────────────────────────────
 GRAVITY       = 0.22
@@ -178,8 +184,9 @@ class WordPhysics:
             b.ty = self.gy
             self.bubbles.append(b)
 
-        # 벽 반사 계산용 반너비
-        self.half_w = abs(self.offsets[-1]) + self.radius if self.n > 1 else self.radius
+        # 벽 반사 계산용: 첫 글자(왼쪽 끝)와 마지막 글자(오른쪽 끝) 기준
+        self.left_w  = abs(self.offsets[0])  + self.radius   # 그룹 중심 → 왼쪽 끝
+        self.right_w = abs(self.offsets[-1]) + self.radius   # 그룹 중심 → 오른쪽 끝
 
     # ── 상태 업데이트 → True 반환 시 다음 단어로 전환 ──────────────────────────
     def update(self) -> bool:
@@ -207,18 +214,18 @@ class WordPhysics:
                 self.gy  = self.H - MARGIN - r
                 self.gvy = -abs(self.gvy) * BOUNCE_FLOOR
                 self.gvx *= FLOOR_FRIC
-                self.gvx += random.uniform(-1.2, 1.2)   # 바닥 충격 랜덤
+                self.gvx += random.uniform(-1.2, 1.2)
             # 천장
             if self.gy - r < MARGIN:
                 self.gy  = MARGIN + r
                 self.gvy = abs(self.gvy) * BOUNCE_FLOOR
-            # 왼쪽 벽
-            if self.gx - self.half_w < MARGIN:
-                self.gx  = MARGIN + self.half_w
+            # 왼쪽 벽 — 첫 글자(맨 왼쪽)가 항상 화면 안에 보이도록
+            if self.gx - self.left_w < MARGIN:
+                self.gx  = MARGIN + self.left_w
                 self.gvx = abs(self.gvx) * BOUNCE_WALL
-            # 오른쪽 벽
-            if self.gx + self.half_w > self.W - MARGIN:
-                self.gx  = self.W - MARGIN - self.half_w
+            # 오른쪽 벽 — 마지막 글자 기준
+            if self.gx + self.right_w > self.W - MARGIN:
+                self.gx  = self.W - MARGIN - self.right_w
                 self.gvx = -abs(self.gvx) * BOUNCE_WALL
 
             # 각 글자: 위상 다른 진동으로 개성 있게 흔들림
@@ -324,15 +331,17 @@ class App:
 
     def _lbl(self):
         w = self.words[self.word_idx]
+        s = auto_secs(w)
         return (f"  [{self.word_idx+1}/{len(self.words)}]  {w}  |  "
-                f"단클릭·{AUTO_S}s:다음  더블클릭:파일재선택  우클릭:종료  ")
+                f"단클릭·{s}s:다음  더블클릭:파일재선택  우클릭:종료  ")
 
     # ── 자동 전환 ────────────────────────────────────────────────────────────
 
     def _reset_auto(self):
         if self._auto_job:
             self.root.after_cancel(self._auto_job)
-        self._auto_job = self.root.after(AUTO_S * 1000, self._next_word)
+        w = self.words[self.word_idx % len(self.words)]
+        self._auto_job = self.root.after(auto_secs(w) * 1000, self._next_word)
 
     # ── 클릭 ─────────────────────────────────────────────────────────────────
 
