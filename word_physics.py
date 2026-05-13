@@ -168,9 +168,14 @@ class WordPhysics:
             b.ty = self.gy
             self.bubbles.append(b)
 
-        # 벽 반사 계산용: 첫 글자(왼쪽 끝)와 마지막 글자(오른쪽 끝) 기준
-        self.left_w  = abs(self.offsets[0])  + self.radius   # 그룹 중심 → 왼쪽 끝
-        self.right_w = abs(self.offsets[-1]) + self.radius   # 그룹 중심 → 오른쪽 끝
+        # 벽 반사 계산용: 진동(osc_amp*0.35 최대 ~7px) + 여유 10px 포함
+        osc_margin   = int(18 * 0.35) + 10
+        self.left_w  = abs(self.offsets[0])  + self.radius + osc_margin
+        self.right_w = abs(self.offsets[-1]) + self.radius + osc_margin
+
+        # 시작 gx 도 안전 범위로 클램프
+        self.gx = max(MARGIN + self.left_w,
+                      min(W - MARGIN - self.right_w, self.gx))
 
     # ── 상태 업데이트 → True 반환 시 다음 단어로 전환 ──────────────────────────
     def update(self) -> bool:
@@ -220,6 +225,9 @@ class WordPhysics:
                 b.tx = self.gx + self.offsets[i] + ox
                 b.ty = self.gy + oy
                 b.step_track()
+                # 실제 위치 클램프 — 어떤 글자도 화면 밖으로 나가지 않음
+                b.x = max(MARGIN + self.radius, min(self.W - MARGIN - self.radius, b.x))
+                b.y = max(MARGIN + self.radius, min(self.H - MARGIN - self.radius, b.y))
 
         elif self.state == S_SCATTER:
             for b in self.bubbles:
