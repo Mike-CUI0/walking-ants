@@ -10,8 +10,15 @@ from tkinter import filedialog
 import math, random, collections
 
 TRANS  = '#FF00FF'
-AUTO_S = 15
 DBL_MS = 300
+
+def auto_secs(word):
+    """단어 길이에 따라 표시 시간 결정"""
+    n = len(word)
+    if n < 10: return 15
+    if n < 20: return 20
+    if n < 30: return 25
+    return 30
 FPS    = 60
 GRAVITY = 0.18
 FLOOR_PAD = 60   # 바닥에서 위로 얼마나 쌓을지 기준
@@ -508,15 +515,17 @@ class App:
         if self._auto_job:
             self.root.after_cancel(self._auto_job)
             self._auto_job = None
-        if self.scene and self.scene.state not in (S_SCATTER,):
+        if self.scene and self.scene.state != S_SCATTER:
             self.scene.scatter()
         self.word_idx += 1
-        # scatter 완료 후 make_scene은 _loop에서 처리
+        # scatter 완료 감지 → _loop에서 _make_scene + _reset_auto 호출됨
 
     def _reset_auto(self):
         if self._auto_job:
             self.root.after_cancel(self._auto_job)
-        self._auto_job = self.root.after(AUTO_S * 1000, self._next_word)
+        word = self.words[self.word_idx % len(self.words)]
+        secs = auto_secs(word)
+        self._auto_job = self.root.after(secs * 1000, self._next_word)
 
     def _on_click(self, e):
         if self._clk_job:
@@ -566,6 +575,7 @@ class App:
         # scatter 완료 → 새 장면
         if scatter_done:
             self._make_scene()
+            self._reset_auto()
 
         # 그리기
         for iid in self._draw_ids:
