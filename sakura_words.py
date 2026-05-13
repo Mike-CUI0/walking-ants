@@ -391,21 +391,21 @@ class SakuraScene:
             for i, ch in enumerate(chars):
                 cx = self.start_x + i * self.char_spacing
                 cy = self.base_y
-                # 그림자
-                sid = cv.create_text(
-                    cx + 2, cy + 2,
-                    text=ch,
-                    font=('맑은 고딕', self.font_size, 'bold'),
-                    fill='#CC6688'
-                )
-                ids.append(sid)
-                tid = cv.create_text(
+                # 진한 그림자 (와인색) — 흰 글자가 꽃잎 위에서 잘 보이도록
+                for dx2, dy2 in ((-2,2),(2,2),(2,-2),(-2,-2),(0,3)):
+                    ids.append(cv.create_text(
+                        cx + dx2, cy + dy2,
+                        text=ch,
+                        font=('맑은 고딕', self.font_size, 'bold'),
+                        fill='#5C0A2E'
+                    ))
+                # 메인 글자 — 흰색
+                ids.append(cv.create_text(
                     cx, cy,
                     text=ch,
                     font=('맑은 고딕', self.font_size, 'bold'),
-                    fill='#FF1493'
-                )
-                ids.append(tid)
+                    fill='#FFFFFF'
+                ))
 
         # 추가 낙하 꽃잎 (배경 분위기용)
         # → App 레벨에서 별도 bg_petals로 처리
