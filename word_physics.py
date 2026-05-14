@@ -325,15 +325,15 @@ class App:
         self.cv.bind('<Button-1>', self._on_click)
         self.cv.bind('<Button-3>', lambda e: root.destroy())
 
-        # ── 안내 레이블 (화면 왼쪽 2/5 지점) ──────────────────────────────────
-        lbl_x = int(self.W * 2 / 5)
+        # ── 안내 레이블 (좌측, 높이 2/5 지점) ────────────────────────────────
+        lbl_y = int(self.H * 2 / 5)
         self._label = tk.Label(root,
             text="클릭  다음단어\n두번클릭  텍스트파일열기\n우측클릭  종료",
             bg='#1a1a2e', fg='#e2e2e2',
             font=('맑은 고딕', 9),
             justify='left',
             padx=8, pady=5)
-        self._label.place(x=lbl_x, rely=1.0, anchor='sw', y=-8)
+        self._label.place(x=8, y=lbl_y, anchor='w')
         # 레이블 클릭도 동일하게 처리
         self._label.bind('<Button-1>', self._on_click)
         self._label.bind('<Double-Button-1>', lambda e: self._reload_file())
