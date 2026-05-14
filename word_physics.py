@@ -234,9 +234,11 @@ class WordPhysics:
                 b.tx = self.gx + self.offsets[i] + ox
                 b.ty = self.gy + oy
                 b.step_track()
-                # 왼쪽: 모든 글자가 하나씩 반드시 보이도록 — 속도도 함께 제거
-                if b.x < MARGIN + self.radius:
-                    b.x  = MARGIN + self.radius
+                # 왼쪽: 버블 i는 최소 MARGIN+radius+i*spacing 위치 보장
+                # → 왼쪽 글자들이 항상 일정 간격으로 펼쳐져서 잘 보임
+                min_x = MARGIN + self.radius + i * self.spacing
+                if b.x < min_x:
+                    b.x  = min_x
                     if b.vx < 0:
                         b.vx = 0
                 # 오른쪽: 화면 밖으로만 안 나가게 (겹침 허용)
