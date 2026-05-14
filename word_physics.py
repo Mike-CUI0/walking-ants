@@ -326,7 +326,7 @@ class App:
             font=('맑은 고딕', 9),
             justify='center',
             padx=6, pady=6)
-        self._label.place(relx=1.0, rely=0.5, anchor='e', x=-6)
+        self._label.place(relx=0.0, rely=0.5, anchor='w', x=6)
 
         self._reset_auto()
         self._loop()
