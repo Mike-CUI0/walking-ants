@@ -234,8 +234,11 @@ class WordPhysics:
                 b.tx = self.gx + self.offsets[i] + ox
                 b.ty = self.gy + oy
                 b.step_track()
-                # 왼쪽: 절대 잘리지 않음 (겹침 없음)
-                b.x = max(MARGIN + self.radius, b.x)
+                # 왼쪽: 모든 글자가 하나씩 반드시 보이도록 — 속도도 함께 제거
+                if b.x < MARGIN + self.radius:
+                    b.x  = MARGIN + self.radius
+                    if b.vx < 0:
+                        b.vx = 0
                 # 오른쪽: 화면 밖으로만 안 나가게 (겹침 허용)
                 b.x = min(self.W - self.radius, b.x)
                 b.y = max(MARGIN + self.radius, min(self.H - MARGIN - self.radius, b.y))
@@ -320,34 +323,9 @@ class App:
         self.cv.bind('<Button-1>', self._on_click)
         self.cv.bind('<Button-3>', lambda e: root.destroy())
 
-        self._label = tk.Label(root,
-            text=self._lbl(),
-            bg='#1a1a2e', fg='#e2e2e2',
-            font=('맑은 고딕', 9),
-            justify='center',
-            padx=6, pady=6)
-        self._label.place(relx=0.0, rely=0.5, anchor='w', x=6)
-
         self._reset_auto()
         self._loop()
         root.mainloop()
-
-    # ── 레이블 ───────────────────────────────────────────────────────────────
-
-    def _lbl(self):
-        w = self.words[self.word_idx % len(self.words)]
-        s = auto_secs(w)
-        return (f"[{self.word_idx+1}/{len(self.words)}]\n"
-                f"{w}\n"
-                f"───\n"
-                f"단클릭\n"
-                f"{s}s:다음\n"
-                f"───\n"
-                f"더블클릭\n"
-                f"파일재선택\n"
-                f"───\n"
-                f"우클릭\n"
-                f"종료")
 
     # ── 자동 전환 ────────────────────────────────────────────────────────────
 
@@ -392,7 +370,6 @@ class App:
         self.words    = nw
         self.word_idx = 0
         self.physics  = WordPhysics(nw[0], self.W, self.H)
-        self._label.config(text=self._lbl())
         self._reset_auto()
 
     # ── 그리기 ───────────────────────────────────────────────────────────────
@@ -411,7 +388,6 @@ class App:
         if done:  # S_SCATTER 완료 → 다음 단어
             self.word_idx = (self.word_idx + 1) % len(self.words)
             self.physics  = WordPhysics(self.words[self.word_idx], self.W, self.H)
-            self._label.config(text=self._lbl())
             self._reset_auto()
 
         self._draw()
