@@ -341,7 +341,17 @@ class App:
 
         self._reset_auto()
         self._loop()
+        self._keep_on_top()
         root.mainloop()
+
+    def _keep_on_top(self):
+        """새 창이 열려도 항상 최상단 유지"""
+        try:
+            self.root.lift()
+            self.root.wm_attributes('-topmost', True)
+        except Exception:
+            pass
+        self.root.after(500, self._keep_on_top)
 
     # ── 자동 전환 ────────────────────────────────────────────────────────────
 
