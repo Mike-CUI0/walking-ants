@@ -338,13 +338,14 @@ class App:
         self._btn_pause = self._make_btn(btn_row, "⏸", self._toggle_pause, side='left', padx=2)
         self._btn_next  = self._make_btn(btn_row, "▶", self._next_word_btn, side='left', padx=2)
 
-        # ── 하단 중국어 전용 레이블 ────────────────────────────────────────────
-        self._cn_label = tk.Label(root,
+        # ── 패널 하단: 한자 전용 레이블 ──────────────────────────────────────
+        self._cn_row = tk.Frame(self._panel, bg=PANEL_BG)
+        self._cn_label = tk.Label(self._cn_row,
             text="",
-            bg='#1a1a2e', fg='#FFD700',
-            font=('맑은 고딕', 18, 'bold'),
-            padx=10, pady=4)
-        self._cn_label.place(relx=0.5, y=self.H - 38, anchor='center')
+            bg=PANEL_BG, fg='#FFD700',
+            font=('맑은 고딕', 15, 'bold'),
+            padx=6, pady=4)
+        self._cn_label.pack()
         self._update_cn_label()
 
         self._reset_auto()
@@ -362,16 +363,16 @@ class App:
         btn.pack(side=side, padx=padx)
         return btn
 
-    # ── 하단 한자 레이블 업데이트 ────────────────────────────────────────────
+    # ── 패널 하단 한자 레이블 업데이트 ─────────────────────────────────────
     def _update_cn_label(self):
         word = self.words[self.word_idx % len(self.words)]
         cn   = extract_chinese(word)
         self._cn_label.config(text=cn)
-        # 한자가 없으면 숨김
+        # 한자가 있으면 패널 하단 행 표시, 없으면 숨김
         if cn:
-            self._cn_label.place(relx=0.5, y=self.H - 38, anchor='center')
+            self._cn_row.pack(pady=(4, 0))
         else:
-            self._cn_label.place_forget()
+            self._cn_row.pack_forget()
 
     # ── 자동 전환 ────────────────────────────────────────────────────────────
     def _reset_auto(self):
