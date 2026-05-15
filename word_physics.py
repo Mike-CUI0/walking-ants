@@ -2,11 +2,11 @@
 단어 물리 엔진 — 글자가 공처럼 튀며 기억 앵커가 된다
 - 글자마다 개성 다른 물리값(중력·탄성·진동주기)
 - ASSEMBLING → BOUNCING → SCATTERING 상태 전환
-- 단클릭 / 15초 : 다음 단어    더블클릭 : 파일재선택    우클릭 : 종료
+- 컨트롤 패널: ◀ ■ ⏸ ▶ + 파일열기    우클릭(캔버스) : 종료
 """
 import tkinter as tk
 from tkinter import filedialog
-import math, random
+import math, random, unicodedata
 
 TRANS  = '#FF00FF'
 DBL_MS = 300
@@ -19,20 +19,37 @@ def auto_secs(word):
     if n < 30: return 25
     return 30
 
+# ── 중국어(한자) 판별 ──────────────────────────────────────────────────────────
+def is_chinese(ch):
+    """CJK 통합한자 범위인지 확인"""
+    cp = ord(ch)
+    return (
+        0x4E00 <= cp <= 0x9FFF or   # CJK Unified Ideographs
+        0x3400 <= cp <= 0x4DBF or   # CJK Extension A
+        0x20000 <= cp <= 0x2A6DF or # CJK Extension B
+        0x2A700 <= cp <= 0x2CEAF or # CJK Extension C/D/E
+        0xF900 <= cp <= 0xFAFF or   # CJK Compatibility Ideographs
+        0x2F800 <= cp <= 0x2FA1F    # CJK Compatibility Supplement
+    )
+
+def extract_chinese(word):
+    """단어에서 한자만 추출해 반환"""
+    return ''.join(ch for ch in word if is_chinese(ch))
+
 # ── 물리 상수 ─────────────────────────────────────────────────────────────────
 GRAVITY       = 0.22
-BOUNCE_FLOOR  = 0.80    # 바닥 탄성
-BOUNCE_WALL   = 0.84    # 벽 탄성
-AIR_DAMP      = 0.9985  # 공기저항
-FLOOR_FRIC    = 0.91    # 바닥 마찰
-MARGIN        = 70      # 화면 경계
+BOUNCE_FLOOR  = 0.80
+BOUNCE_WALL   = 0.84
+AIR_DAMP      = 0.9985
+FLOOR_FRIC    = 0.91
+MARGIN        = 70
 
 # ── 상태 ─────────────────────────────────────────────────────────────────────
-S_ASSEMBLE = 0   # 글자들이 날아와 단어 완성
-S_BOUNCE   = 1   # 단어가 튀어다님
-S_SCATTER  = 2   # 글자들이 폭발하며 흩어짐
+S_ASSEMBLE = 0
+S_BOUNCE   = 1
+S_SCATTER  = 2
 
-# ── 글자 색상 팔레트 (위치별 고정 → 색-위치 기억 강화) ───────────────────────
+# ── 글자 색상 팔레트 ───────────────────────────────────────────────────────────
 PALETTE = [
     '#FF6B6B', '#FF9F43', '#FFC312', '#A3CB38',
     '#12CBC4', '#1289A7', '#9980FA', '#FDA7DF',
@@ -40,13 +57,20 @@ PALETTE = [
     '#F8EFBA', '#58B19F', '#D63031', '#6C5CE7',
 ]
 
+# ── 컨트롤 패널 색상 ──────────────────────────────────────────────────────────
+PANEL_BG  = '#1a1a2e'
+BTN_BG    = '#252545'
+BTN_FG    = '#e2e2e2'
+BTN_ACT   = '#3a3a6e'
+BTN_PAUSE = '#ffcc00'   # 일시정지 시 색상 변경
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 언어 헬퍼
+# 파일 로드
 # ══════════════════════════════════════════════════════════════════════════════
 
 def load_words(path):
-    for enc in ('utf-8','utf-8-sig','cp949'):
+    for enc in ('utf-8', 'utf-8-sig', 'cp949'):
         try:
             with open(path, encoding=enc) as f:
                 lines = f.read().splitlines()
@@ -56,13 +80,13 @@ def load_words(path):
     else:
         return []
     words = [l.strip() for l in lines if l.strip()]
-    random.shuffle(words)   # 랜덤 순서로 로드
+    random.shuffle(words)
     return words
 
 def pick_file(parent=None):
     return filedialog.askopenfilename(
         parent=parent, title="단어 파일 선택",
-        filetypes=[("텍스트 파일","*.txt"),("모든 파일","*.*")]
+        filetypes=[("텍스트 파일", "*.txt"), ("모든 파일", "*.*")]
     ) or None
 
 def pick_and_load():
@@ -82,48 +106,40 @@ class Bubble:
         self.radius = radius
         self.W, self.H = W, H
 
-        # 시작 위치: 화면 바깥 랜덤 가장자리
         side = random.randint(0, 3)
         r2   = radius * 3
-        if   side == 0: self.x, self.y = random.uniform(0,W), -r2
-        elif side == 1: self.x, self.y = W+r2, random.uniform(0,H)
-        elif side == 2: self.x, self.y = random.uniform(0,W), H+r2
-        else:           self.x, self.y = -r2, random.uniform(0,H)
+        if   side == 0: self.x, self.y = random.uniform(0, W), -r2
+        elif side == 1: self.x, self.y = W + r2, random.uniform(0, H)
+        elif side == 2: self.x, self.y = random.uniform(0, W), H + r2
+        else:           self.x, self.y = -r2, random.uniform(0, H)
 
         self.vx = self.vy = 0.0
-
-        # 목표 위치 (나중에 설정)
         self.tx = self.ty = 0.0
 
-        # 개성 있는 물리값 (글자마다 다름 → 움직임이 기억 앵커)
-        self.osc_freq = random.uniform(0.025, 0.065)   # 진동 주기
-        self.osc_amp  = random.uniform(6, 18)           # 진동 폭
-        self.osc_phase= random.uniform(0, math.tau)     # 위상
-        self.bounce_personality = random.uniform(0.88, 1.12)  # 탄성 개성
+        self.osc_freq  = random.uniform(0.025, 0.065)
+        self.osc_amp   = random.uniform(6, 18)
+        self.osc_phase = random.uniform(0, math.tau)
+        self.bounce_personality = random.uniform(0.88, 1.12)
 
-        self.assembled  = False
-        # scatter 전용
+        self.assembled = False
         self.svx = self.svy = 0.0
 
-    # ── ASSEMBLING: 목표 위치로 스프링 수렴 ──────────────────────────────────
     def step_assemble(self):
         self.vx = self.vx * 0.80 + (self.tx - self.x) * 0.20
         self.vy = self.vy * 0.80 + (self.ty - self.y) * 0.20
         self.x += self.vx
         self.y += self.vy
-        if math.hypot(self.tx-self.x, self.ty-self.y) < 1.5:
+        if math.hypot(self.tx - self.x, self.ty - self.y) < 1.5:
             self.x, self.y = self.tx, self.ty
             self.vx = self.vy = 0.0
             self.assembled = True
 
-    # ── BOUNCING: 진동하는 목표 추적 ──────────────────────────────────────────
     def step_track(self):
         self.vx = self.vx * 0.70 + (self.tx - self.x) * 0.30
         self.vy = self.vy * 0.70 + (self.ty - self.y) * 0.30
         self.x += self.vx
         self.y += self.vy
 
-    # ── SCATTERING: 자유낙하 + 폭발 ──────────────────────────────────────────
     def step_scatter(self):
         self.svy += GRAVITY * 1.6
         self.x   += self.svx
@@ -131,7 +147,7 @@ class Bubble:
 
     @property
     def offscreen(self):
-        return self.x<-200 or self.x>self.W+200 or self.y<-200 or self.y>self.H+300
+        return self.x < -200 or self.x > self.W + 200 or self.y < -200 or self.y > self.H + 300
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -146,23 +162,19 @@ class WordPhysics:
         self.state = S_ASSEMBLE
         self.frame = 0
 
-        # 단어 길이에 맞게 크기 조절
-        raw_space   = (W - MARGIN*2) / max(self.n, 1)
+        raw_space    = (W - MARGIN * 2) / max(self.n, 1)
         self.spacing = min(68, max(44, int(raw_space * 0.90)))
         self.radius  = min(28, int(self.spacing * 0.44))
         self.font    = ('맑은 고딕', max(10, self.radius - 3), 'bold')
 
-        # 그룹 앵커 (단어 전체가 하나로 움직임)
         self.gx  = W / 2
         self.gy  = H * 0.42
         self.gvx = random.uniform(-7, 7)
-        self.gvy = random.uniform(-13, -7)   # 강한 위쪽 킥
+        self.gvy = random.uniform(-13, -7)
 
-        # 각 글자의 그룹 내 상대 오프셋 (수평 배열)
         total_w      = (self.n - 1) * self.spacing
-        self.offsets = [(i * self.spacing - total_w/2) for i in range(self.n)]
+        self.offsets = [(i * self.spacing - total_w / 2) for i in range(self.n)]
 
-        # 글자 공 생성
         self.bubbles: list[Bubble] = []
         for i, ch in enumerate(word):
             b = Bubble(ch, PALETTE[i % len(PALETTE)], self.radius, W, H)
@@ -170,23 +182,18 @@ class WordPhysics:
             b.ty = self.gy
             self.bubbles.append(b)
 
-        # 벽 계산: 진동 폭(osc_amp*0.35 최대 ≈7px) + 여유
         osc_margin   = int(18 * 0.35) + 10
         self.left_w  = abs(self.offsets[0])  + self.radius + osc_margin
         self.right_w = abs(self.offsets[-1]) + self.radius + osc_margin
 
-        # 단어가 화면 안에 들어오는지 여부
         self.word_fits = (self.left_w + self.right_w) <= (W - 2 * MARGIN)
 
-        # 시작 gx: 왼쪽 기준으로 클램프 (왼쪽 우선)
         if self.word_fits:
             self.gx = max(MARGIN + self.left_w,
                           min(W - MARGIN - self.right_w, W / 2))
         else:
-            # 단어가 너무 길면 왼쪽 정렬 시작 (오른쪽 중복 허용)
             self.gx = MARGIN + self.left_w
 
-    # ── 상태 업데이트 → True 반환 시 다음 단어로 전환 ──────────────────────────
     def update(self) -> bool:
         self.frame += 1
 
@@ -199,7 +206,6 @@ class WordPhysics:
                 self.frame = 0
 
         elif self.state == S_BOUNCE:
-            # 그룹 물리
             self.gvy += GRAVITY
             self.gvx *= AIR_DAMP
             self.gvy *= AIR_DAMP
@@ -207,26 +213,21 @@ class WordPhysics:
             self.gy  += self.gvy
 
             r = self.radius
-            # 바닥
             if self.gy + r > self.H - MARGIN:
                 self.gy  = self.H - MARGIN - r
                 self.gvy = -abs(self.gvy) * BOUNCE_FLOOR
                 self.gvx *= FLOOR_FRIC
                 self.gvx += random.uniform(-1.2, 1.2)
-            # 천장
             if self.gy - r < MARGIN:
                 self.gy  = MARGIN + r
                 self.gvy = abs(self.gvy) * BOUNCE_FLOOR
-            # 왼쪽 벽: 항상 강제 — 첫 글자 절대 잘리지 않음
             if self.gx - self.left_w < MARGIN:
                 self.gx  = MARGIN + self.left_w
                 self.gvx = abs(self.gvx) * BOUNCE_WALL
-            # 오른쪽 벽: 항상 반사
             if self.gx + self.right_w > self.W - MARGIN:
                 self.gx  = self.W - MARGIN - self.right_w
                 self.gvx = -abs(self.gvx) * BOUNCE_WALL
 
-            # 각 글자: 위상 다른 진동으로 개성 있게 흔들림
             for i, b in enumerate(self.bubbles):
                 t   = self.frame * b.osc_freq + b.osc_phase
                 ox  = math.sin(t * 1.3) * b.osc_amp * 0.35
@@ -234,14 +235,11 @@ class WordPhysics:
                 b.tx = self.gx + self.offsets[i] + ox
                 b.ty = self.gy + oy
                 b.step_track()
-                # 왼쪽: 버블 i는 최소 MARGIN+radius+i*spacing 위치 보장
-                # → 왼쪽 글자들이 항상 일정 간격으로 펼쳐져서 잘 보임
                 min_x = MARGIN + self.radius + i * self.spacing
                 if b.x < min_x:
-                    b.x  = min_x
+                    b.x = min_x
                     if b.vx < 0:
                         b.vx = 0
-                # 오른쪽: 화면 밖으로만 안 나가게 (겹침 허용)
                 b.x = min(self.W - self.radius, b.x)
                 b.y = max(MARGIN + self.radius, min(self.H - MARGIN - self.radius, b.y))
 
@@ -249,12 +247,11 @@ class WordPhysics:
             for b in self.bubbles:
                 b.step_scatter()
             if all(b.offscreen for b in self.bubbles):
-                return True   # ← 다음 단어 신호
+                return True
 
         return False
 
     def scatter(self):
-        """폭발 흩어짐 시작"""
         self.state = S_SCATTER
         cx = sum(b.x for b in self.bubbles) / len(self.bubbles)
         cy = sum(b.y for b in self.bubbles) / len(self.bubbles)
@@ -263,31 +260,23 @@ class WordPhysics:
             dy   = b.y - cy
             dist = max(1, math.hypot(dx, dy))
             spd  = random.uniform(12, 26)
-            b.svx = dx/dist * spd + random.uniform(-4, 4)
-            b.svy = dy/dist * spd - random.uniform(3, 9)   # 위로 날아오름
+            b.svx = dx / dist * spd + random.uniform(-4, 4)
+            b.svy = dy / dist * spd - random.uniform(3, 9)
 
     def draw(self, cv: tk.Canvas, ids: list):
         r = self.radius
         for b in self.bubbles:
             x, y = b.x, b.y
             c    = b.color
-
-            # 그림자
             ids.append(cv.create_oval(
-                x-r+4, y-r+4, x+r+4, y+r+4,
+                x - r + 4, y - r + 4, x + r + 4, y + r + 4,
                 fill='#2A2A2A', outline=''))
-
-            # 메인 원
             ids.append(cv.create_oval(
-                x-r, y-r, x+r, y+r,
+                x - r, y - r, x + r, y + r,
                 fill=c, outline='white', width=2))
-
-            # 글자 그림자
             ids.append(cv.create_text(
-                x+1.5, y+1.5, text=b.char,
+                x + 1.5, y + 1.5, text=b.char,
                 font=self.font, fill='#444444'))
-
-            # 글자 본체 (흰색)
             ids.append(cv.create_text(
                 x, y, text=b.char,
                 font=self.font, fill='white'))
@@ -301,6 +290,7 @@ class App:
     def __init__(self, words: list[str]):
         self.words    = words
         self.word_idx = 0
+        self.paused   = False
 
         root = tk.Tk()
         self.root = root
@@ -316,52 +306,114 @@ class App:
                             bg=TRANS, highlightthickness=0)
         self.cv.pack()
 
-        self.ids      = []
-        self._clk_job = None
-        self._auto_job= None
-        self.physics  = WordPhysics(words[0], self.W, self.H)
+        self.ids       = []
+        self._clk_job  = None
+        self._auto_job = None
+        self.physics   = WordPhysics(words[0], self.W, self.H)
 
-        self.cv.bind('<Button-1>', self._on_click)
         self.cv.bind('<Button-3>', lambda e: root.destroy())
 
-        # ── 안내 레이블 (좌측, 높이 2/5 지점) ────────────────────────────────
-        lbl_y = int(self.H * 2 / 5)
-        self._label = tk.Label(root,
-            text="클릭  다음단어\n두번클릭  텍스트파일열기\n우측클릭  종료",
-            bg='#1a1a2e', fg='#e2e2e2',
-            font=('맑은 고딕', 9),
-            justify='left',
-            padx=8, pady=5)
-        self._label.place(x=8, y=lbl_y, anchor='w')
-        # 레이블 클릭도 동일하게 처리
-        self._label.bind('<Button-1>', self._on_click)
-        self._label.bind('<Double-Button-1>', lambda e: self._reload_file())
-        self._label.bind('<Button-3>', lambda e: root.destroy())
+        # ── 컨트롤 패널 프레임 (좌측, H×2/5 지점) ────────────────────────────
+        panel_x = 8
+        panel_y = int(self.H * 2 / 5)
+        self._panel = tk.Frame(root, bg=PANEL_BG,
+                               bd=0, relief='flat',
+                               padx=4, pady=4)
+        self._panel.place(x=panel_x, y=panel_y, anchor='w')
+
+        # 파일 열기 버튼 (첫 행 오른쪽 정렬)
+        top_row = tk.Frame(self._panel, bg=PANEL_BG)
+        top_row.pack(fill='x', pady=(0, 4))
+
+        tk.Label(top_row, text="", bg=PANEL_BG).pack(side='left', expand=True)
+        self._btn_file = self._make_btn(top_row, "📂", self._reload_file,
+                                        side='right', padx=2)
+
+        # 버튼 행: ◀  ■  ⏸  ▶
+        btn_row = tk.Frame(self._panel, bg=PANEL_BG)
+        btn_row.pack()
+
+        self._btn_prev  = self._make_btn(btn_row, "◀", self._prev_word, side='left', padx=2)
+        self._btn_stop  = self._make_btn(btn_row, "■", root.destroy,    side='left', padx=2)
+        self._btn_pause = self._make_btn(btn_row, "⏸", self._toggle_pause, side='left', padx=2)
+        self._btn_next  = self._make_btn(btn_row, "▶", self._next_word_btn, side='left', padx=2)
+
+        # ── 하단 중국어 전용 레이블 ────────────────────────────────────────────
+        self._cn_label = tk.Label(root,
+            text="",
+            bg='#1a1a2e', fg='#FFD700',
+            font=('맑은 고딕', 18, 'bold'),
+            padx=10, pady=4)
+        self._cn_label.place(relx=0.5, y=self.H - 38, anchor='center')
+        self._update_cn_label()
 
         self._reset_auto()
         self._loop()
         root.mainloop()
 
-    # ── 자동 전환 ────────────────────────────────────────────────────────────
+    # ── 버튼 생성 헬퍼 ──────────────────────────────────────────────────────
+    def _make_btn(self, parent, text, cmd, side='left', padx=2):
+        btn = tk.Button(parent, text=text, command=cmd,
+                        bg=BTN_BG, fg=BTN_FG,
+                        activebackground=BTN_ACT, activeforeground=BTN_FG,
+                        font=('맑은 고딕', 14),
+                        width=2, relief='flat', bd=0,
+                        cursor='hand2')
+        btn.pack(side=side, padx=padx)
+        return btn
 
+    # ── 하단 한자 레이블 업데이트 ────────────────────────────────────────────
+    def _update_cn_label(self):
+        word = self.words[self.word_idx % len(self.words)]
+        cn   = extract_chinese(word)
+        self._cn_label.config(text=cn)
+        # 한자가 없으면 숨김
+        if cn:
+            self._cn_label.place(relx=0.5, y=self.H - 38, anchor='center')
+        else:
+            self._cn_label.place_forget()
+
+    # ── 자동 전환 ────────────────────────────────────────────────────────────
     def _reset_auto(self):
         if self._auto_job:
             self.root.after_cancel(self._auto_job)
-        w = self.words[self.word_idx % len(self.words)]
-        self._auto_job = self.root.after(auto_secs(w) * 1000, self._next_word)
+        if not self.paused:
+            w = self.words[self.word_idx % len(self.words)]
+            self._auto_job = self.root.after(auto_secs(w) * 1000, self._next_word)
 
-    # ── 클릭 ─────────────────────────────────────────────────────────────────
-
-    def _on_click(self, event):
-        if self._clk_job is not None:
-            self.root.after_cancel(self._clk_job)
-            self._clk_job = None
-            self._reload_file()
+    # ── 일시정지 토글 ────────────────────────────────────────────────────────
+    def _toggle_pause(self):
+        self.paused = not self.paused
+        if self.paused:
+            # 자동 타이머 취소, 버튼 강조
+            if self._auto_job:
+                self.root.after_cancel(self._auto_job)
+                self._auto_job = None
+            self._btn_pause.config(fg=BTN_PAUSE)
         else:
-            self._clk_job = self.root.after(DBL_MS, self._next_word)
+            self._btn_pause.config(fg=BTN_FG)
+            self._reset_auto()
 
-    # ── 단어 전환 ────────────────────────────────────────────────────────────
+    # ── 이전 단어 ────────────────────────────────────────────────────────────
+    def _prev_word(self):
+        if self._auto_job:
+            self.root.after_cancel(self._auto_job)
+            self._auto_job = None
+        self.word_idx = (self.word_idx - 1) % len(self.words)
+        self.physics  = WordPhysics(self.words[self.word_idx], self.W, self.H)
+        self._update_cn_label()
+        self._reset_auto()
 
+    # ── 다음 단어 (버튼) ─────────────────────────────────────────────────────
+    def _next_word_btn(self):
+        if self._auto_job:
+            self.root.after_cancel(self._auto_job)
+            self._auto_job = None
+        if self.physics.state != S_SCATTER:
+            self.physics.scatter()
+        # 실제 교체는 _loop에서 S_SCATTER 완료 후 처리
+
+    # ── 다음 단어 (내부 / 자동) ───────────────────────────────────────────────
     def _next_word(self):
         self._clk_job = None
         if self._auto_job:
@@ -369,10 +421,8 @@ class App:
             self._auto_job = None
         if self.physics.state != S_SCATTER:
             self.physics.scatter()
-        # 실제 단어 교체는 _loop에서 S_SCATTER 완료 감지 시 처리
 
     # ── 파일 재선택 ──────────────────────────────────────────────────────────
-
     def _reload_file(self):
         path = pick_file(parent=self.root)
         if not path:
@@ -383,10 +433,10 @@ class App:
         self.words    = nw
         self.word_idx = 0
         self.physics  = WordPhysics(nw[0], self.W, self.H)
+        self._update_cn_label()
         self._reset_auto()
 
     # ── 그리기 ───────────────────────────────────────────────────────────────
-
     def _draw(self):
         for i in self.ids:
             self.cv.delete(i)
@@ -394,14 +444,15 @@ class App:
         self.physics.draw(self.cv, self.ids)
 
     # ── 메인 루프 ─────────────────────────────────────────────────────────────
-
     def _loop(self):
-        done = self.physics.update()
+        if not self.paused:
+            done = self.physics.update()
 
-        if done:  # S_SCATTER 완료 → 다음 단어
-            self.word_idx = (self.word_idx + 1) % len(self.words)
-            self.physics  = WordPhysics(self.words[self.word_idx], self.W, self.H)
-            self._reset_auto()
+            if done:
+                self.word_idx = (self.word_idx + 1) % len(self.words)
+                self.physics  = WordPhysics(self.words[self.word_idx], self.W, self.H)
+                self._update_cn_label()
+                self._reset_auto()
 
         self._draw()
         self.root.after(1000 // FPS, self._loop)
