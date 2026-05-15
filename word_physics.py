@@ -393,12 +393,12 @@ class App:
     # ── 패널 하단 한자 레이블 업데이트 ─────────────────────────────────────
     def _update_cn_label(self):
         word = self.words[self.word_idx % len(self.words)]
-        cn   = extract_chinese(word)
+        # 공백으로 나눈 각 덩어리에서 한자 추출 → 빈 결과 제거 → 줄바꿈으로 합침
+        parts = [extract_chinese(seg) for seg in word.split()]
+        cn    = '\n'.join(p for p in parts if p)
         self._cn_label.config(text=cn)
-        # 한자가 있으면 패널 하단 행 표시, 없으면 숨김
         if cn:
             self._cn_row.pack(pady=(4, 0))
-            # wraplength도 현재 패널 폭으로 갱신
             self._sync_wrap()
         else:
             self._cn_row.pack_forget()
