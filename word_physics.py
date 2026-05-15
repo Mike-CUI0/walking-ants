@@ -313,40 +313,50 @@ class App:
 
         self.cv.bind('<Button-3>', lambda e: root.destroy())
 
-        # ── 컨트롤 패널 프레임 (좌측, H×2/5 지점) ────────────────────────────
+        # ── 컨트롤 패널 (드래그 이동 가능, 흰 테두리) ───────────────────────
         panel_x = 8
         panel_y = int(self.H * 2 / 5)
-        self._panel = tk.Frame(root, bg=PANEL_BG,
-                               bd=0, relief='flat',
-                               padx=4, pady=4)
-        self._panel.place(x=panel_x, y=panel_y, anchor='w')
 
-        # 파일 열기 버튼 (첫 행 오른쪽 정렬)
-        top_row = tk.Frame(self._panel, bg=PANEL_BG)
-        top_row.pack(fill='x', pady=(0, 4))
+        # 흰색 테두리: 외곽 프레임(white) + 1px 여백 + 내부 패널(PANEL_BG)
+        self._panel_outer = tk.Frame(root, bg='white', bd=0)
+        self._panel_outer.place(x=panel_x, y=panel_y, anchor='nw')
 
-        tk.Label(top_row, text="", bg=PANEL_BG).pack(side='left', expand=True)
-        self._btn_file = self._make_btn(top_row, "📂", self._reload_file,
-                                        side='right', padx=2)
+        self._panel = tk.Frame(self._panel_outer, bg=PANEL_BG,
+                               bd=0, relief='flat', padx=5, pady=5)
+        self._panel.pack(padx=1, pady=1)   # 1px white border
 
-        # 버튼 행: ◀  ■  ⏸  ▶
+        # 버튼 한 줄: ◀  ■  ⏸  ▶  📂
         btn_row = tk.Frame(self._panel, bg=PANEL_BG)
         btn_row.pack()
 
-        self._btn_prev  = self._make_btn(btn_row, "◀", self._prev_word, side='left', padx=2)
-        self._btn_stop  = self._make_btn(btn_row, "■", root.destroy,    side='left', padx=2)
-        self._btn_pause = self._make_btn(btn_row, "⏸", self._toggle_pause, side='left', padx=2)
-        self._btn_next  = self._make_btn(btn_row, "▶", self._next_word_btn, side='left', padx=2)
+        self._btn_prev  = self._make_btn(btn_row, "◀", self._prev_word,     side='left', padx=2)
+        self._btn_stop  = self._make_btn(btn_row, "■", root.destroy,         side='left', padx=2)
+        self._btn_pause = self._make_btn(btn_row, "⏸", self._toggle_pause,  side='left', padx=2)
+        self._btn_next  = self._make_btn(btn_row, "▶", self._next_word_btn,  side='left', padx=2)
+        self._btn_file  = self._make_btn(btn_row, "📂", self._reload_file,   side='left', padx=2)
 
-        # ── 패널 하단: 한자 전용 레이블 ──────────────────────────────────────
+        # 패널 하단: 한자 전용 레이블 (wraplength는 렌더 후 동기화)
         self._cn_row = tk.Frame(self._panel, bg=PANEL_BG)
         self._cn_label = tk.Label(self._cn_row,
             text="",
             bg=PANEL_BG, fg='#FFD700',
             font=('맑은 고딕', 15, 'bold'),
-            padx=6, pady=4)
-        self._cn_label.pack()
+            wraplength=200,   # 렌더 후 _sync_wrap()에서 실제 폭으로 갱신
+            justify='left',
+            padx=4, pady=4)
+        self._cn_label.pack(anchor='w')
         self._update_cn_label()
+
+        # 드래그 이동 바인딩
+        self._drag_ox = self._drag_oy = 0
+        for w in (self._panel_outer, self._panel, btn_row, self._cn_row, self._cn_label,
+                  self._btn_prev, self._btn_stop, self._btn_pause,
+                  self._btn_next, self._btn_file):
+            w.bind('<ButtonPress-1>', self._drag_start)
+            w.bind('<B1-Motion>',     self._drag_move)
+
+        # 렌더 후 wraplength 실제 폭으로 맞추기
+        root.after(150, self._sync_wrap)
 
         self._reset_auto()
         self._loop()
@@ -363,6 +373,23 @@ class App:
         btn.pack(side=side, padx=padx)
         return btn
 
+    # ── 패널 드래그 ─────────────────────────────────────────────────────────
+    def _drag_start(self, event):
+        self._drag_ox = event.x_root - self._panel_outer.winfo_x()
+        self._drag_oy = event.y_root - self._panel_outer.winfo_y()
+
+    def _drag_move(self, event):
+        nx = event.x_root - self._drag_ox
+        ny = event.y_root - self._drag_oy
+        self._panel_outer.place(x=nx, y=ny, anchor='nw')
+
+    # ── wraplength를 패널 실제 폭에 맞춤 ────────────────────────────────────
+    def _sync_wrap(self):
+        self._panel_outer.update_idletasks()
+        w = self._panel.winfo_width() - 10   # padx*2 빼기
+        if w > 30:
+            self._cn_label.config(wraplength=w)
+
     # ── 패널 하단 한자 레이블 업데이트 ─────────────────────────────────────
     def _update_cn_label(self):
         word = self.words[self.word_idx % len(self.words)]
@@ -371,6 +398,8 @@ class App:
         # 한자가 있으면 패널 하단 행 표시, 없으면 숨김
         if cn:
             self._cn_row.pack(pady=(4, 0))
+            # wraplength도 현재 패널 폭으로 갱신
+            self._sync_wrap()
         else:
             self._cn_row.pack_forget()
 
