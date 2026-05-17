@@ -36,6 +36,18 @@ def extract_chinese(word):
     """단어에서 한자만 추출해 반환"""
     return ''.join(ch for ch in word if is_chinese(ch))
 
+def has_foreign(word):
+    """영어·중국어·일본어 중 하나라도 포함하면 True"""
+    for ch in word:
+        cp = ord(ch)
+        if (ch.isascii() and ch.isalpha()):          # 영어
+            return True
+        if is_chinese(ch):                            # 중국어(한자)
+            return True
+        if 0x3040 <= cp <= 0x309F: return True        # 히라가나
+        if 0x30A0 <= cp <= 0x30FF: return True        # 가타카나
+    return False
+
 # ── 물리 상수 ─────────────────────────────────────────────────────────────────
 GRAVITY       = 0.22
 BOUNCE_FLOOR  = 0.80
@@ -79,7 +91,7 @@ def load_words(path):
             continue
     else:
         return []
-    words = [l.strip() for l in lines if l.strip()]
+    words = [l.strip() for l in lines if l.strip() and has_foreign(l.strip())]
     random.shuffle(words)
     return words
 
