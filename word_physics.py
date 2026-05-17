@@ -33,8 +33,20 @@ def is_chinese(ch):
     )
 
 def extract_chinese(word):
-    """단어에서 한자만 추출해 반환"""
-    return ''.join(ch for ch in word if is_chinese(ch))
+    """한자가 포함된 세그먼트에서 한자 + 숫자 + 기호 추출
+    (한자가 없으면 빈 문자열 반환 / 한글·영문자는 제외)"""
+    if not any(is_chinese(ch) for ch in word):
+        return ''
+    result = []
+    for ch in word:
+        cp = ord(ch)
+        is_hangul = (0xAC00 <= cp <= 0xD7A3 or   # 한글 완성형
+                     0x1100 <= cp <= 0x11FF or     # 한글 자모
+                     0x3130 <= cp <= 0x318F)       # 한글 호환 자모
+        is_latin  = ch.isascii() and ch.isalpha()  # 영문자
+        if not is_hangul and not is_latin:
+            result.append(ch)
+    return ''.join(result)
 
 def has_foreign(word):
     """영어·중국어·일본어 중 하나라도 포함하면 True"""
