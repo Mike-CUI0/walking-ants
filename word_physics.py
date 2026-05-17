@@ -32,20 +32,31 @@ def is_chinese(ch):
         0x2F800 <= cp <= 0x2FA1F    # CJK Compatibility Supplement
     )
 
-def extract_chinese(word):
-    """한자가 포함된 세그먼트에서 한자·영어·일본어·숫자·기호 추출
-    (한자가 없으면 빈 문자열 반환 / 한글만 제외)"""
-    if not any(is_chinese(ch) for ch in word):
+def extract_foreign(word):
+    """한자·영어·일본어 중 하나라도 포함된 세그먼트에서 한글만 제외하고 추출
+    (외국어가 전혀 없으면 빈 문자열 반환)"""
+    def _is_foreign(ch):
+        cp = ord(ch)
+        return (is_chinese(ch) or
+                (ch.isascii() and ch.isalpha()) or   # 영어
+                0x3040 <= cp <= 0x309F or             # 히라가나
+                0x30A0 <= cp <= 0x30FF)               # 가타카나
+
+    if not any(_is_foreign(ch) for ch in word):
         return ''
+
     result = []
     for ch in word:
         cp = ord(ch)
-        is_hangul = (0xAC00 <= cp <= 0xD7A3 or   # 한글 완성형
-                     0x1100 <= cp <= 0x11FF or     # 한글 자모
-                     0x3130 <= cp <= 0x318F)       # 한글 호환 자모
+        is_hangul = (0xAC00 <= cp <= 0xD7A3 or
+                     0x1100 <= cp <= 0x11FF or
+                     0x3130 <= cp <= 0x318F)
         if not is_hangul:
             result.append(ch)
     return ''.join(result)
+
+# 하위 호환용 alias
+extract_chinese = extract_foreign
 
 def has_foreign(word):
     """영어·중국어·일본어 중 하나라도 포함하면 True"""
