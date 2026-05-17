@@ -325,33 +325,79 @@ class App:
                                bd=0, relief='flat', padx=5, pady=5)
         self._panel.pack(padx=1, pady=1)   # 1px white border
 
-        # 버튼 한 줄: ◀  ■  ⏸  ▶  📂
-        btn_row = tk.Frame(self._panel, bg=PANEL_BG)
-        btn_row.pack()
+        # ── 검색 행 ──────────────────────────────────────────────────────────
+        search_row = tk.Frame(self._panel, bg=PANEL_BG)
+        search_row.pack(fill='x', pady=(0, 4))
 
-        self._btn_prev  = self._make_btn(btn_row, "◀", self._prev_word,     side='left', padx=2)
-        self._btn_stop  = self._make_btn(btn_row, "■", root.destroy,         side='left', padx=2)
-        self._btn_pause = self._make_btn(btn_row, "⏸", self._toggle_pause,  side='left', padx=2)
-        self._btn_next  = self._make_btn(btn_row, "▶", self._next_word_btn,  side='left', padx=2)
-        self._btn_file  = self._make_btn(btn_row, "📂", self._reload_file,   side='left', padx=2)
+        self._search_var = tk.StringVar()
+        self._search_entry = tk.Entry(search_row,
+            textvariable=self._search_var,
+            bg=BTN_BG, fg=BTN_FG,
+            insertbackground=BTN_FG,
+            relief='flat', bd=2,
+            font=('맑은 고딕', 10),
+            width=14)
+        self._search_entry.pack(side='left', fill='x', expand=True, padx=(0, 4))
+        self._search_entry.bind('<Return>', lambda e: self._do_search())
 
-        # 패널 하단: 한자 전용 레이블 (wraplength는 렌더 후 동기화)
+        self._btn_search = tk.Button(search_row, text="🔍",
+            command=self._do_search,
+            bg=BTN_BG, fg=BTN_FG,
+            activebackground=BTN_ACT, activeforeground=BTN_FG,
+            font=('맑은 고딕', 11),
+            relief='flat', bd=0, cursor='hand2')
+        self._btn_search.pack(side='left')
+
+        # ── 검색 결과 리스트 (결과 있을 때만 표시) ───────────────────────────
+        self._result_frame = tk.Frame(self._panel, bg=PANEL_BG)
+        # Listbox + Scrollbar
+        self._listbox = tk.Listbox(self._result_frame,
+            bg=BTN_BG, fg=BTN_FG,
+            selectbackground='#3a3a6e', selectforeground='#ffffff',
+            font=('맑은 고딕', 10),
+            relief='flat', bd=0,
+            height=5, activestyle='none',
+            highlightthickness=0)
+        sb = tk.Scrollbar(self._result_frame, orient='vertical',
+                          command=self._listbox.yview)
+        self._listbox.config(yscrollcommand=sb.set)
+        self._listbox.pack(side='left', fill='both', expand=True)
+        sb.pack(side='right', fill='y')
+        self._listbox.bind('<<ListboxSelect>>', self._select_result)
+        self._search_indices = []   # 검색 결과의 self.words 인덱스 목록
+
+        # ── 버튼 한 줄: ◀  ■  ⏸  ▶  📂 ──────────────────────────────────
+        self._btn_row = tk.Frame(self._panel, bg=PANEL_BG)
+        btn_row = self._btn_row
+        btn_row.pack(pady=(4, 0))
+
+        self._btn_prev  = self._make_btn(btn_row, "◀", self._prev_word,      side='left', padx=2)
+        self._btn_stop  = self._make_btn(btn_row, "■", root.destroy,          side='left', padx=2)
+        self._btn_pause = self._make_btn(btn_row, "⏸", self._toggle_pause,   side='left', padx=2)
+        self._btn_next  = self._make_btn(btn_row, "▶", self._next_word_btn,   side='left', padx=2)
+        self._btn_file  = self._make_btn(btn_row, "📂", self._reload_file,    side='left', padx=2)
+
+        # ── 패널 하단: 한자 전용 레이블 ──────────────────────────────────────
         self._cn_row = tk.Frame(self._panel, bg=PANEL_BG)
         self._cn_label = tk.Label(self._cn_row,
             text="",
             bg=PANEL_BG, fg='#FFD700',
             font=('맑은 고딕', 15, 'bold'),
-            wraplength=200,   # 렌더 후 _sync_wrap()에서 실제 폭으로 갱신
+            wraplength=200,
             justify='left',
             padx=4, pady=4)
         self._cn_label.pack(anchor='w')
         self._update_cn_label()
 
-        # 드래그 이동 바인딩
+        # ── 드래그 이동 바인딩 ────────────────────────────────────────────────
         self._drag_ox = self._drag_oy = 0
-        for w in (self._panel_outer, self._panel, btn_row, self._cn_row, self._cn_label,
-                  self._btn_prev, self._btn_stop, self._btn_pause,
-                  self._btn_next, self._btn_file):
+        drag_targets = (
+            self._panel_outer, self._panel, search_row, btn_row,
+            self._cn_row, self._cn_label,
+            self._btn_prev, self._btn_stop, self._btn_pause,
+            self._btn_next, self._btn_file,
+        )
+        for w in drag_targets:
             w.bind('<ButtonPress-1>', self._drag_start)
             w.bind('<B1-Motion>',     self._drag_move)
 
@@ -372,6 +418,44 @@ class App:
                         cursor='hand2')
         btn.pack(side=side, padx=padx)
         return btn
+
+    # ── 검색 ────────────────────────────────────────────────────────────────
+    def _do_search(self):
+        keyword = self._search_var.get().strip()
+        self._listbox.delete(0, 'end')
+        self._search_indices.clear()
+
+        if not keyword:
+            self._result_frame.pack_forget()
+            return
+
+        # 대소문자 무시 부분 일치 검색
+        kw_lower = keyword.lower()
+        for i, w in enumerate(self.words):
+            if kw_lower in w.lower():
+                self._listbox.insert('end', w)
+                self._search_indices.append(i)
+
+        self._result_frame.pack_forget()
+        if self._search_indices:
+            self._listbox.config(height=min(6, len(self._search_indices)))
+        else:
+            self._listbox.insert('end', '(검색 결과 없음)')
+            self._listbox.config(height=1)
+        # btn_row 바로 위에 삽입
+        self._result_frame.pack(fill='x', pady=(0, 4), before=self._btn_row)
+
+    def _select_result(self, event=None):
+        sel = self._listbox.curselection()
+        if not sel or sel[0] >= len(self._search_indices):
+            return
+        if self._auto_job:
+            self.root.after_cancel(self._auto_job)
+            self._auto_job = None
+        self.word_idx = self._search_indices[sel[0]]
+        self.physics  = WordPhysics(self.words[self.word_idx], self.W, self.H)
+        self._update_cn_label()
+        self._reset_auto()
 
     # ── 패널 드래그 ─────────────────────────────────────────────────────────
     def _drag_start(self, event):
