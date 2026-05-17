@@ -292,18 +292,26 @@ class WordPhysics:
         for b in self.bubbles:
             x, y = b.x, b.y
             c    = b.color
-            ids.append(cv.create_oval(
-                x - r + 4, y - r + 4, x + r + 4, y + r + 4,
-                fill='#2A2A2A', outline=''))
-            ids.append(cv.create_oval(
-                x - r, y - r, x + r, y + r,
-                fill=c, outline='white', width=2))
-            ids.append(cv.create_text(
-                x + 1.5, y + 1.5, text=b.char,
-                font=self.font, fill='#444444'))
-            ids.append(cv.create_text(
-                x, y, text=b.char,
-                font=self.font, fill='white'))
+
+            if b.char == ' ':
+                # 공백 버블: 테두리만, 내부는 투명
+                ids.append(cv.create_oval(
+                    x - r, y - r, x + r, y + r,
+                    fill=TRANS, outline='white', width=2))
+            else:
+                # 일반 버블: 그림자 + 채색 원 + 글자
+                ids.append(cv.create_oval(
+                    x - r + 4, y - r + 4, x + r + 4, y + r + 4,
+                    fill='#2A2A2A', outline=''))
+                ids.append(cv.create_oval(
+                    x - r, y - r, x + r, y + r,
+                    fill=c, outline='white', width=2))
+                ids.append(cv.create_text(
+                    x + 1.5, y + 1.5, text=b.char,
+                    font=self.font, fill='#444444'))
+                ids.append(cv.create_text(
+                    x, y, text=b.char,
+                    font=self.font, fill='white'))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -401,28 +409,23 @@ class App:
         self._btn_next  = self._make_btn(btn_row, "▶", self._next_word_btn,   side='left', padx=2)
         self._btn_file  = self._make_btn(btn_row, "📂", self._reload_file,    side='left', padx=2)
 
-        # ── 패널 하단: 한자 전용 텍스트 위젯 ────────────────────────────────
+        # ── 패널 하단: 한자 전용 레이블 ──────────────────────────────────────
         self._cn_row = tk.Frame(self._panel, bg=PANEL_BG)
-        self._cn_text = tk.Text(self._cn_row,
-            bg=PANEL_BG,
-            relief='flat', bd=0,
-            highlightthickness=0,
+        self._cn_label = tk.Label(self._cn_row,
+            text="",
+            bg=PANEL_BG, fg='#FFD700',
             font=('맑은 고딕', 15, 'bold'),
-            wrap='word',
-            state='disabled',
-            cursor='arrow',
-            padx=4, pady=4,
-            height=1)
-        self._cn_text.tag_configure('cn', foreground='#FFD700')          # 한자·숫자·기호: 금색
-        self._cn_text.tag_configure('sp', foreground='#AAAAAA')          # 공백: 옅은 흰색
-        self._cn_text.pack(fill='x')
+            wraplength=200,
+            justify='left',
+            padx=4, pady=4)
+        self._cn_label.pack(anchor='w')
         self._update_cn_label()
 
         # ── 드래그 이동 바인딩 ────────────────────────────────────────────────
         self._drag_ox = self._drag_oy = 0
         drag_targets = (
             self._panel_outer, self._panel, search_row, btn_row,
-            self._cn_row, self._cn_text,
+            self._cn_row, self._cn_label,
             self._btn_prev, self._btn_stop, self._btn_pause,
             self._btn_next, self._btn_file,
         )
@@ -430,7 +433,7 @@ class App:
             w.bind('<ButtonPress-1>', self._drag_start)
             w.bind('<B1-Motion>',     self._drag_move)
 
-        # 렌더 후 텍스트 폭 동기화
+        # 렌더 후 wraplength 실제 폭으로 맞추기
         root.after(150, self._sync_wrap)
 
         self._reset_auto()
@@ -496,44 +499,21 @@ class App:
         ny = event.y_root - self._drag_oy
         self._panel_outer.place(x=nx, y=ny, anchor='nw')
 
-    # ── 텍스트 위젯 폭 동기화 + 높이 자동조정 ───────────────────────────────
+    # ── wraplength를 패널 실제 폭에 맞춤 ────────────────────────────────────
     def _sync_wrap(self):
         self._panel_outer.update_idletasks()
-        pw = self._panel.winfo_width() - 10
-        if pw > 30:
-            # 픽셀 폭 → 문자 수 근사 (맑은 고딕 15pt ≈ 17px/char)
-            char_w = max(4, pw // 17)
-            self._cn_text.config(width=char_w)
-        # 내용 줄 수에 맞게 높이 조정
-        self._cn_text.update_idletasks()
-        lines = int(self._cn_text.index('end-1c').split('.')[0])
-        self._cn_text.config(height=max(1, lines))
+        w = self._panel.winfo_width() - 10
+        if w > 30:
+            self._cn_label.config(wraplength=w)
 
-    # ── 패널 하단 한자 텍스트 업데이트 ─────────────────────────────────────
+    # ── 패널 하단 한자 레이블 업데이트 ─────────────────────────────────────
     def _update_cn_label(self):
         word = self.words[self.word_idx % len(self.words)]
-
-        self._cn_text.config(state='normal')
-        self._cn_text.delete('1.0', 'end')
-
-        has_cn = any(is_chinese(ch) for ch in word)
-        if has_cn:
-            for ch in word:
-                cp = ord(ch)
-                is_hangul = (0xAC00 <= cp <= 0xD7A3 or
-                             0x1100 <= cp <= 0x11FF or
-                             0x3130 <= cp <= 0x318F)
-                is_latin  = ch.isascii() and ch.isalpha()
-                if ch == ' ':
-                    self._cn_text.insert('end', ' ', 'sp')   # 공백: 옅은 흰색
-                elif not is_hangul and not is_latin:
-                    self._cn_text.insert('end', ch, 'cn')    # 한자·숫자·기호: 금색
-                # 한글·영문자는 삽입하지 않음
-
-        self._cn_text.config(state='disabled')
-
-        content = self._cn_text.get('1.0', 'end').strip()
-        if content:
+        # 공백으로 나눈 각 덩어리에서 한자 추출 → 빈 결과 제거 → 줄바꿈으로 합침
+        parts = [extract_chinese(seg) for seg in word.split()]
+        cn    = '\n'.join(p for p in parts if p)
+        self._cn_label.config(text=cn)
+        if cn:
             self._cn_row.pack(pady=(4, 0))
             self._sync_wrap()
         else:
