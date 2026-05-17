@@ -521,7 +521,7 @@ class App:
         word = self.words[self.word_idx % len(self.words)]
         # 공백으로 나눈 각 덩어리에서 한자 추출 → 빈 결과 제거 → 줄바꿈으로 합침
         parts = [extract_chinese(seg) for seg in word.split()]
-        cn    = '\n'.join(p for p in parts if p)
+        cn    = ' '.join(p for p in parts if p)
         self._cn_label.config(text=cn)
         if cn:
             self._cn_row.pack(pady=(4, 0))
